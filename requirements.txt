@@ -1,0 +1,7 @@
+# requirements.txt
+Django>=4.0
+pandas>=1.5
+pillow>=9.0
+qrcode>=7.0
+reportlab>=3.6
+openpyxl>=3.0

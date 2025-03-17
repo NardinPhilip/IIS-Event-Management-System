@@ -1,0 +1,11 @@
+{% extends 'qr_attendance/base.html' %}
+{% block content %}
+<div class="container">
+    <h2>Attendance Recorded</h2>
+    <div class="success-message">
+        <p>Successfully recorded attendance for <strong>{{ attendee.name }}</strong></p>
+        <p>Job Title: {{ attendee.job_title }}</p>
+    </div>
+    <a href="/attendance/" class="btn">View Attendance List</a>
+</div>
+{% endblock %}

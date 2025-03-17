@@ -1,0 +1,59 @@
+{% extends 'qr_attendance/base.html' %}
+{% block content %}
+<div class="upload-container">
+    <h2>Upload Excel File</h2>
+    <form method="post" enctype="multipart/form-data" id="upload-form">
+        {% csrf_token %}
+        <div class="drop-zone" id="drop-zone">
+            <p>Drag & Drop your Excel file here</p>
+            <p>or</p>
+            <label for="excel_file" class="file-label">Choose a file</label>
+            <input type="file" name="excel_file" id="excel_file" accept=".xlsx, .xls" required hidden>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('excel_file');
+    const form = document.getElementById('upload-form');
+
+    // Highlight drop zone on drag over
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    // Handle file drop
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        fileInput.files = e.dataTransfer.files;
+        if (fileInput.files.length) {
+            form.submit(); // Auto-submit on drop
+        }
+    });
+
+    // Trigger file input click when clicking the drop zone
+    dropZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // Auto-submit on file selection via input
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            form.submit();
+        }
+    });
+});
+</script>
+{% endblock %}

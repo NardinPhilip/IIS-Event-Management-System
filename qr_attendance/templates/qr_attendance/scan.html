@@ -1,0 +1,372 @@
+{% extends 'qr_attendance/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container">
+    <h2 class="page-title">Scan QR Code</h2>
+    <div class="scan-section">
+        <video id="qr-video" style="width: 100%; max-width: 500px; border: 2px dashed #1e3a8a; min-height: 300px; object-fit: cover;"></video>
+        <canvas id="qr-canvas" style="display: none;"></canvas>
+        <button id="start-scan-btn" class="btn btn-primary">Start Scanning</button>
+        <button id="stop-scan-btn" class="btn btn-secondary" style="display: none;">Stop Scanning</button>
+    </div>
+    <div id="scan-result" class="result"></div>
+    {% csrf_token %}
+    <h3>Recent Attendance</h3>
+    <table class="attendance-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Job Title</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody id="attendance-list">
+            {% for attendance in attendances %}
+            <tr>
+                <td>{{ attendance.attendee.name }}</td>
+                <td>{{ attendance.attendee.job_title }}</td>
+                <td>{{ attendance.timestamp }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3" class="no-attendance">No recent attendance recorded.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+<script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    const video = document.getElementById('qr-video');
+    const canvasElement = document.getElementById('qr-canvas');
+    const canvas = canvasElement.getContext('2d', { willReadFrequently: true }); // Optimize for frequent reads
+    const startScanBtn = document.getElementById('start-scan-btn');
+    const stopScanBtn = document.getElementById('stop-scan-btn');
+    const resultDiv = document.getElementById('scan-result');
+    const attendanceList = document.getElementById('attendance-list');
+    const csrfElement = document.querySelector('[name=csrfmiddlewaretoken]');
+    const csrfToken = csrfElement ? csrfElement.value : null;
+
+    let stream;
+    let scanning = false;
+    let lastScanTime = 0;
+    const scanCooldown = 500; // Reduced to 0.5s for faster repeat scans
+
+    function processQrCode(code) {
+        fetch(`/scan/${code}/`, {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const confirmMsg = `Are you sure you want to record attendance for:\n\nName: ${data.name}\nJob Title: ${data.job_title}`;
+                if (confirm(confirmMsg)) {
+                    fetch(`/scan/${code}/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRFToken': csrfToken
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            resultDiv.textContent = data.message;
+                            resultDiv.className = 'result alert alert-success';
+                            const newRow = document.createElement('tr');
+                            newRow.innerHTML = `
+                                <td>${data.name}</td>
+                                <td>${data.job_title}</td>
+                                <td>${data.timestamp}</td>
+                            `;
+                            if (attendanceList) {
+                                const firstChild = attendanceList.firstChild;
+                                if (firstChild && firstChild.classList && firstChild.classList.contains('no-attendance')) {
+                                    attendanceList.removeChild(firstChild);
+                                }
+                                attendanceList.insertBefore(newRow, attendanceList.firstChild);
+                            }
+                        } else {
+                            resultDiv.textContent = data.message;
+                            resultDiv.className = 'result alert alert-danger';
+                        }
+                    })
+                    .catch(error => {
+                        resultDiv.textContent = 'Failed to record: ' + error.message;
+                        resultDiv.className = 'result alert alert-danger';
+                    });
+                }
+            } else {
+                resultDiv.textContent = data.message;
+                resultDiv.className = 'result alert alert-danger';
+            }
+        })
+        .catch(error => {
+            resultDiv.textContent = 'Failed to confirm: ' + error.message;
+            resultDiv.className = 'result alert alert-danger';
+        });
+    }
+
+    function scanFrame() {
+        if (!scanning) return;
+        canvasElement.width = video.videoWidth;
+        canvasElement.height = video.videoHeight;
+        canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+        const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert' // Skip inversion for speed
+        });
+        if (code) {
+            const currentTime = Date.now();
+            if (currentTime - lastScanTime >= scanCooldown) {
+                lastScanTime = currentTime;
+                console.log('QR code scanned:', code.data);
+                stopScanning();
+                processQrCode(code.data);
+                return; // Exit after detection
+            }
+        }
+        requestAnimationFrame(scanFrame); // Continue scanning
+    }
+
+    function startScanning() {
+        navigator.mediaDevices.getUserMedia({
+            video: {
+                width: { ideal: 640 }, // Low res for speed
+                height: { ideal: 480 },
+                facingMode: 'environment' // Rear camera on mobile
+            }
+        }).then(s => {
+            stream = s;
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                scanning = true;
+                startScanBtn.style.display = 'none';
+                stopScanBtn.style.display = 'inline-block';
+                requestAnimationFrame(scanFrame);
+            };
+        }).catch(err => {
+            console.error('Camera start failed:', err);
+            resultDiv.textContent = 'Failed to start camera: ' + err.message;
+            resultDiv.className = 'result alert alert-danger';
+        });
+    }
+
+    function stopScanning() {
+        scanning = false;
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        startScanBtn.style.display = 'inline-block';
+        stopScanBtn.style.display = 'none';
+    }
+
+    startScanBtn.addEventListener('click', startScanning);
+    stopScanBtn.addEventListener('click', stopScanning);
+
+    // Handle orientation changes on mobile
+    window.addEventListener('orientationchange', () => {
+        if (scanning) {
+            stopScanning();
+            setTimeout(startScanning, 100); // Restart to adjust video
+        }
+    });
+});
+</script>
+
+<style>
+body {
+    background: #f8fafc;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #2d3748;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1e3a8a;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    letter-spacing: -0.025em;
+    text-transform: uppercase;
+}
+
+.scan-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+#qr-video {
+    width: 100%;
+    max-width: 500px;
+    border: 2px dashed #1e3a8a;
+    min-height: 300px;
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    object-fit: cover;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    width: 100%;
+    max-width: 200px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #1e3a8a, #172554);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #172554, #1e3a8a);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(30, 58, 138, 0.4);
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #d97706, #b45309);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+}
+
+.result {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.alert-success {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #34d399;
+}
+
+.alert-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #f87171;
+}
+
+.attendance-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9rem;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+.attendance-table th,
+.attendance-table td {
+    padding: 1rem;
+    text-align: left;
+}
+
+.attendance-table th {
+    background: #1e3a8a;
+    color: #ffffff;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid #1e3a8a;
+}
+
+.attendance-table td {
+    border-bottom: 1px solid #e2e8f0;
+    color: #4a5568;
+}
+
+.attendance-table tr:last-child td {
+    border-bottom: none;
+}
+
+.attendance-table tr:hover {
+    background: #f1f5f9;
+}
+
+.no-attendance {
+    text-align: center;
+    font-style: italic;
+    color: #64748b;
+    padding: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 0.75rem;
+    }
+    .page-title {
+        font-size: 1.25rem;
+    }
+    #qr-video {
+        max-width: 100%;
+        min-height: 250px;
+    }
+    .btn {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+    .attendance-table th,
+    .attendance-table td {
+        padding: 0.75rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .page-title {
+        font-size: 1rem;
+    }
+    #qr-video {
+        min-height: 200px;
+    }
+    .btn {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+    }
+    .attendance-table th,
+    .attendance-table td {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+    }
+}
+</style>
+{% endblock %}

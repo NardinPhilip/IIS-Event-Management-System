@@ -1,0 +1,38 @@
+<!-- qr_attendance/templates/qr_attendance/attendance_list.html -->
+{% extends 'qr_attendance/base.html' %}
+{% block content %}
+<div class="container">
+    <h2>Attendance Records</h2>
+    {% if attendances %}
+    <table class="attendance-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Job Title</th>
+                <th>Timestamp</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for attendance in attendances %}
+            <tr>
+                <td>{{ attendance.attendee.name }}</td>
+                <td>{{ attendance.attendee.job_title }}</td>
+                <td>{{ attendance.timestamp|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ attendance.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="download-btn">
+        <a href="{% url 'generate_qr_stickers' %}" class="btn btn-primary">Download QR Stickers as PDF</a>
+        <form action="{% url 'flush_attendance' %}" method="post" onsubmit="return confirm('Are you sure you want to clear all attendance records? This action cannot be undone.');" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Clear Attendance</button>
+        </form>
+    </div>
+    {% else %}
+    <p class="info">No attendance records yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
