@@ -15,7 +15,8 @@ SECRET_KEY = 'your-secret-key-here'  # Replace with your actual secret key
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["nardin.pythonanywhere.com", "127.0.0.1", "localhost"]
+
 
 # Application definition
 INSTALLED_APPS = [

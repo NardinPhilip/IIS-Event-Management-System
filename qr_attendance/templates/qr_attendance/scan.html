@@ -42,7 +42,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const video = document.getElementById('qr-video');
     const canvasElement = document.getElementById('qr-canvas');
-    const canvas = canvasElement.getContext('2d', { willReadFrequently: true }); // Optimize for frequent reads
+    const canvas = canvasElement.getContext('2d', { willReadFrequently: true });
     const startScanBtn = document.getElementById('start-scan-btn');
     const stopScanBtn = document.getElementById('stop-scan-btn');
     const resultDiv = document.getElementById('scan-result');
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let stream;
     let scanning = false;
     let lastScanTime = 0;
-    const scanCooldown = 500; // Reduced to 0.5s for faster repeat scans
+    const scanCooldown = 500;
 
     function processQrCode(code) {
         fetch(`/scan/${code}/`, {
@@ -90,6 +90,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                                 attendanceList.insertBefore(newRow, attendanceList.firstChild);
                             }
+                            // Auto-refresh page after successful scan
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1000); // 1-second delay to show success message
                         } else {
                             resultDiv.textContent = data.message;
                             resultDiv.className = 'result alert alert-danger';
@@ -118,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
         canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
         const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
         const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'dontInvert' // Skip inversion for speed
+            inversionAttempts: 'dontInvert'
         });
         if (code) {
             const currentTime = Date.now();
@@ -127,18 +131,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('QR code scanned:', code.data);
                 stopScanning();
                 processQrCode(code.data);
-                return; // Exit after detection
+                return;
             }
         }
-        requestAnimationFrame(scanFrame); // Continue scanning
+        requestAnimationFrame(scanFrame);
     }
 
     function startScanning() {
         navigator.mediaDevices.getUserMedia({
             video: {
-                width: { ideal: 640 }, // Low res for speed
+                width: { ideal: 640 },
                 height: { ideal: 480 },
-                facingMode: 'environment' // Rear camera on mobile
+                facingMode: 'environment'
             }
         }).then(s => {
             stream = s;
@@ -169,11 +173,10 @@ document.addEventListener('DOMContentLoaded', function() {
     startScanBtn.addEventListener('click', startScanning);
     stopScanBtn.addEventListener('click', stopScanning);
 
-    // Handle orientation changes on mobile
     window.addEventListener('orientationchange', () => {
         if (scanning) {
             stopScanning();
-            setTimeout(startScanning, 100); // Restart to adjust video
+            setTimeout(startScanning, 100);
         }
     });
 });

@@ -79,7 +79,7 @@ def generate_qr_stickers(request):
         attendees = Attendee.objects.all()
         if not attendees.exists():
             return HttpResponse("No attendees found", status=404)
-        
+
         qr_size = 180 * mm
         qr_configs = []
         for attendee in attendees:
@@ -96,7 +96,7 @@ def generate_qr_stickers(request):
             qr_img.save(qr_buffer, format="PNG")
             qr_buffer.seek(0)  # Reset buffer position
             qr_configs.append((attendee, qr_buffer))
-        
+
         top_margin = 20 * mm
         welcome_font_size = 60
         name_font_size = 60
@@ -104,33 +104,33 @@ def generate_qr_stickers(request):
             page_center_x = A4[0] / 2
             welcome_y_start = A4[1] - top_margin - (welcome_font_size * 1.5 / 2.83465) * 2
             qr_y = (A4[1] - qr_size) / 2 - 5 * mm
-            
+
             welcome_text_part1 = "Welcome to"
             welcome_text_part2 = "ACOC25 Iftar"
             reshaped_part1 = reshape(welcome_text_part1)
             bidi_part1 = get_display(reshaped_part1)
             reshaped_part2 = reshape(welcome_text_part2)
             bidi_part2 = get_display(reshaped_part2)
-            
+
             p.setFont("Amiri-Bold", welcome_font_size)
             line_height = welcome_font_size * 2.3 / 2.83465
             text_y = welcome_y_start
             p.drawCentredString(page_center_x, text_y, bidi_part1)
             text_y -= line_height
             p.drawCentredString(page_center_x, text_y, bidi_part2)
-            
+
             # Use ImageReader to wrap the BytesIO object
             qr_image = ImageReader(qr_buffer)
             p.drawImage(qr_image, (A4[0] - qr_size) / 2, qr_y, width=qr_size, height=qr_size, mask='auto')
-            
+
             name_text = get_display(reshape(attendee.name))
             name_y = qr_y - 30 * mm
             p.setFont("Amiri-Bold", name_font_size)
             p.drawCentredString(page_center_x, name_y, name_text)
-            
+
             p.showPage()
             qr_buffer.close()
-        
+
         p.save()
         buffer.seek(0)
         return FileResponse(buffer, as_attachment=True, filename='qr_stickers.pdf')
@@ -192,9 +192,33 @@ def scan_qr(request, code):
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
+# qr_attendance/views.py
+from django.shortcuts import render
+from django.core.paginator import Paginator
+from django.db.models import Q
+from .models import Attendance  # Adjust based on your model
+
 def attendance_list(request):
-    attendances = Attendance.objects.all().order_by('-timestamp')[:25]
-    return render(request, 'qr_attendance/attendance_list.html', {'attendances': attendances})
+    # Get search query from request
+    search_query = request.GET.get('search', '').strip()
+
+    # Fetch all attendance records with optional search filter
+    attendances = Attendance.objects.all().order_by('-timestamp')  # Latest first
+    if search_query:
+        attendances = attendances.filter(
+            Q(attendee__name__icontains=search_query) |
+            Q(attendee__job_title__icontains=search_query)
+        )
+
+    # Paginate results
+    paginator = Paginator(attendances, 10)  # 50 per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'qr_attendance/attendance_list.html', {
+        'attendances': page_obj,
+        'search_query': search_query,  # Pass search term to template
+    })
 
 def scan_page(request):
     attendances = Attendance.objects.all().order_by('-timestamp')[:25]
